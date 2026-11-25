@@ -1,9 +1,8 @@
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.db.models import Count
-from django.db.models.functions import TruncMonth
 from django.utils import timezone
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ParseError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,6 +10,15 @@ from accounts.models import Member
 from catalog.models import Item
 from circulation.models import Hold, Loan, LoanEvent
 from core.permissions import IsStaff, staff_branches
+
+
+def _day_start(value, default_days_ago=0):
+    """Aware datetime at 00:00 (project time zone) of a YYYY-MM-DD string, or N days ago."""
+    try:
+        d = date.fromisoformat(value) if value else (timezone.localdate() - timedelta(days=default_days_ago))
+    except ValueError:
+        raise ParseError("Dates must look like 2026-11-24")
+    return timezone.make_aware(datetime.combine(d, time.min))
 
 
 def _scope(qs, user, field):
@@ -54,17 +62,20 @@ class ReportView(APIView):
     def report_most_borrowed(self, request):
         p = request.query_params
         qs = self._loans(request)
-        since = p.get("from") or (timezone.now() - timedelta(days=90)).date().isoformat()
-        qs = qs.filter(issued_at__date__gte=since)
+        qs = qs.filter(issued_at__gte=_day_start(p.get("from"), default_days_ago=90))
         if p.get("to"):
-            qs = qs.filter(issued_at__date__lte=p["to"])
+            qs = qs.filter(issued_at__lt=_day_start(p["to"]) + timedelta(days=1))
         rows = (qs.values("item__edition__work_id", "item__edition__work__title")
                 .annotate(loans=Count("id")).order_by("-loans")[:20])
         return [{"work": r["item__edition__work_id"], "title": r["item__edition__work__title"], "loans": r["loans"]}
                 for r in rows]
 
     def report_new_arrivals(self, request):
-        since = timezone.now() - timedelta(days=int(request.query_params.get("days", 30)))
+        try:
+            days = int(request.query_params.get("days", 30))
+        except ValueError:
+            raise ParseError("days must be a number")
+        since = timezone.now() - timedelta(days=days)
         qs = _scope(Item.objects.filter(created_at__gte=since), request.user, "branch")
         rows = (qs.values("edition__work_id", "edition__work__title").annotate(copies=Count("id"))
                 .order_by("-copies")[:50])
@@ -81,5 +92,8 @@ class ReportView(APIView):
 
     def report_membership_growth(self, request):
         qs = _scope(Member.objects.all(), request.user, "home_branch")
-        rows = qs.annotate(m=TruncMonth("created_at")).values("m").annotate(n=Count("id")).order_by("m")
-        return [{"month": r["m"].date().isoformat(), "new_members": r["n"]} for r in rows]
+        counts = {}
+        for created in qs.values_list("created_at", flat=True):
+            month = timezone.localtime(created).date().replace(day=1)
+            counts[month] = counts.get(month, 0) + 1
+        return [{"month": m.isoformat(), "new_members": n} for m, n in sorted(counts.items())]

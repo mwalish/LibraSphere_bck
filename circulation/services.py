@@ -31,7 +31,7 @@ def resolve_policy(branch, tier, resource_type):
     candidates = Policy.objects.filter(
         Q(branch=branch) | Q(branch__isnull=True),
         Q(tier=tier) | Q(tier__isnull=True),
-        Q(resource_type=resource_type) | Q(resource_type__isnull=True))
+        Q(resource_type=resource_type) | Q(resource_type__isnull=True)).order_by("id")
     best, best_score = None, -1
     for p in candidates:
         score = (p.branch_id is not None) * 4 + (p.tier_id is not None) * 2 + (p.resource_type_id is not None)

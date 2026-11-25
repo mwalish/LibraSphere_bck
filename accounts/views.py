@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -78,7 +79,7 @@ class MemberViewSet(BranchScopedQuerysetMixin, mixins.ListModelMixin, mixins.Ret
             qs = qs.filter(status=p["status"])
         if p.get("search"):
             s = p["search"]
-            qs = qs.filter(member_no__icontains=s) | qs.filter(user__full_name__icontains=s) | qs.filter(user__email__icontains=s)
+            qs = qs.filter(Q(member_no__icontains=s) | Q(user__full_name__icontains=s) | Q(user__email__icontains=s))
         return qs.order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
@@ -105,10 +106,12 @@ class MemberViewSet(BranchScopedQuerysetMixin, mixins.ListModelMixin, mixins.Ret
         member = self.get_object()
         if not can_staff(request.user, member.home_branch_id, "branch_manager"):
             raise PermissionDenied()
+        first_time = member.status == Member.Status.PENDING
         if not member.tier:
             member.tier = MembershipTier.objects.order_by("price").first()
         self._activate(member, request.user)
-        notify(member.user, "membership_approved", member_no=member.member_no)
+        if first_time:  # reactivating a suspended member doesn't send a second welcome
+            notify(member.user, "membership_approved", member_no=member.member_no)
         return Response(MemberSerializer(member).data)
 
     @action(detail=True, methods=["post"], permission_classes=[IsManager])

@@ -57,12 +57,21 @@ TEMPLATES = [{
     ]},
 }]
 
-DATABASES = {"default": dj_database_url.config(
-    default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=600)}
-if DATABASES["default"]["ENGINE"].endswith("mysql"):
-    DATABASES["default"].setdefault("OPTIONS", {}).update(
-        charset="utf8mb4", init_command="SET sql_mode='STRICT_TRANS_TABLES'")
 
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'librasphere_db',
+        'USER': 'root',
+        'PASSWORD': '',
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
+    }
+}
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -97,7 +106,7 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/min", "user": "600/min", "login": "10/min", "register": "10/hour"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "300/min", "user": "600/min", "login": "10/min", "register": "10/hour"},
 }
 
 SIMPLE_JWT = {

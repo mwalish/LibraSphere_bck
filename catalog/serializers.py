@@ -88,6 +88,8 @@ class EditionWriteSerializer(serializers.ModelSerializer):
         return clean_isbn(value)
 
     def validate(self, attrs):
+        if self.root is self and not self.instance and not attrs.get("work"):
+            raise serializers.ValidationError({"work": "Say which title this edition belongs to"})
         rt = attrs.get("resource_type") or getattr(self.instance, "resource_type", None)
         required = (rt.metadata_template or {}).get("required", []) if rt else []
         meta = attrs.get("metadata", getattr(self.instance, "metadata", {})) or {}
